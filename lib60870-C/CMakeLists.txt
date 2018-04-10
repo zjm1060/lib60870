@@ -7,14 +7,18 @@ if(DEFINED ENV{TOOLCHAIN})
 	set(CMAKE_AR	"$ENV{TOOLCHAIN}ar" CACHE FILEPATH "CW archiver" FORCE)
 endif()
 
-project(lib60870)
+project(lib60870-C)
 ENABLE_TESTING()
 
-set(LIB_VERSION_MAJOR "0")
-set(LIB_VERSION_MINOR "9")
-set(LIB_VERSION_PATCH "5")
+set(LIB_VERSION_MAJOR "2")
+set(LIB_VERSION_MINOR "0")
+set(LIB_VERSION_PATCH "0")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/third_party/cmake/modules/")
+
+macro(ADD_C_FLAGS flags)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${flags}")
+endmacro()
 
 # feature checks
 include(CheckLibraryExists)
@@ -24,27 +28,50 @@ check_library_exists(rt clock_gettime "time.h" CONFIG_SYSTEM_HAS_CLOCK_GETTIME)
 include (TestBigEndian)
 test_big_endian(PLATFORM_IS_BIGENDIAN)
 
+if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/dependencies/mbedtls-2.6.0)
+set(WITH_MBEDTLS 1)
+endif(EXISTS ${CMAKE_CURRENT_LIST_DIR}/dependencies/mbedtls-2.6.0)
 
 option(BUILD_EXAMPLES "Build the examples" ON)
 option(BUILD_TESTS "Build the tests" ON)
 
 include_directories(
-    config
-    src/inc/api
-    src/inc/internal
-    src/common/inc
-    src/hal/inc
+    ${CMAKE_CURRENT_LIST_DIR}/config
+    ${CMAKE_CURRENT_LIST_DIR}/src/inc/api
+    ${CMAKE_CURRENT_LIST_DIR}/src/inc/internal
+    ${CMAKE_CURRENT_LIST_DIR}/src/common/inc
+    ${CMAKE_CURRENT_LIST_DIR}/src/hal/inc
+    ${CMAKE_CURRENT_LIST_DIR}/src/tls
 )
 
+if(WITH_MBEDTLS)
+include_directories(
+    ${CMAKE_CURRENT_LIST_DIR}/src/tls/mbedtls
+    ${CMAKE_CURRENT_LIST_DIR}/dependencies/mbedtls-2.6.0/include
+)
+
+file(GLOB tls_SRCS ${CMAKE_CURRENT_LIST_DIR}/dependencies/mbedtls-2.6.0/library/*.c)
+
+add_definitions(-DCONFIG_CS104_SUPPORT_TLS=1)
+add_definitions(-DMBEDTLS_CONFIG_FILE="mbedtls_config.h")
+
+endif(WITH_MBEDTLS)
+
+
 set(API_HEADERS 
-	src/hal/inc/hal_time.h 
-	src/hal/inc/hal_thread.h
-	src/hal/inc/hal_filesystem.h 
-	src/inc/api/iec60870_master.h
-	src/inc/api/iec60870_slave.h
-	src/inc/api/iec60870_common.h
-	src/inc/api/information_objects.h
-	src/inc/api/t104_connection.h
+	${CMAKE_CURRENT_LIST_DIR}/src/hal/inc/hal_time.h 
+	${CMAKE_CURRENT_LIST_DIR}/src/hal/inc/hal_thread.h
+	${CMAKE_CURRENT_LIST_DIR}/src/hal/inc/hal_filesystem.h 
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/cs101_master.h
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/cs101_slave.h
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/cs104_slave.h
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/iec60870_master.h
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/iec60870_slave.h
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/iec60870_common.h
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/information_objects
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/cs104_connection.h
+	${CMAKE_CURRENT_LIST_DIR}/src/inc/api/link_layer_parameters.h
+	${CMAKE_CURRENT_LIST_DIR}/src/tls/tls_api.h
 )
 
 
@@ -52,22 +79,22 @@ set(API_HEADERS
 # configure_file(config/lib60870_config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config/lib60870_config.h)
 
 if(BUILD_EXAMPLES)
-	add_subdirectory(examples)
+	add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/examples)
 endif(BUILD_EXAMPLES)
 
 if(BUILD_TESTS)
-	add_subdirectory(tests)
+	add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests)
 endif(BUILD_TESTS)
 
-add_subdirectory(src)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src)
 
 INSTALL(FILES ${API_HEADERS} DESTINATION include/lib60870 COMPONENT Development)
 
 IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 INCLUDE(InstallRequiredSystemLibraries)
  
-SET(CPACK_PACKAGE_DESCRIPTION "IEC 60870-5-104 client and server library")
-SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "IEC 60870-5-104 client and server library")
+SET(CPACK_PACKAGE_DESCRIPTION "IEC 60870-5-101/104 master/slave library")
+SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "IEC 60870-5-101/104 master/slave library")
 SET(CPACK_PACKAGE_VENDOR "MZ Automation GmbH")
 SET(CPACK_PACKAGE_CONTACT "info@mz-automation.de")
 SET(CPACK_PACKAGE_VERSION_MAJOR "${LIB_VERSION_MAJOR}")

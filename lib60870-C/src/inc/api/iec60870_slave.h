@@ -1,5 +1,5 @@
 /*
- *  Copyright 2016 MZ Automation GmbH
+ *  Copyright 2016, 2017 MZ Automation GmbH
  *
  *  This file is part of lib60870-C
  *
@@ -25,165 +25,50 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "iec60870_common.h"
+#include "tls_api.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct sMasterConnection* MasterConnection;
-
-typedef struct sSlave* Slave;
-typedef struct sT104Slave* T104Slave;
-
-typedef enum {
-    SINGLE_REDUNDANCY_GROUP,
-    CONNECTION_IS_REDUNDANCY_GROUP
-} ServerMode;
-
 /**
- * Callback handlers for master requests handling
+ * \file iec60870_slave.h
+ * \brief Common slave side definitions for IEC 60870-5-101/104
+ * These types are used by CS101/CS104 slaves
  */
 
 /**
- * \brief Handler for interrogation command (C_IC_NA_1 - 100).
- */
-typedef bool (*InterrogationHandler) (void* parameter, MasterConnection connection, ASDU asdu, uint8_t qoi);
-
-/**
- * \brief Handler for counter interrogation command (C_CI_NA_1 - 101).
- */
-typedef bool (*CounterInterrogationHandler) (void* parameter, MasterConnection connection, ASDU asdu, QualifierOfCIC qcc);
-
-/**
- * \brief Handler for read command (C_RD_NA_1 - 102)
- */
-typedef bool (*ReadHandler) (void* parameter, MasterConnection connection, ASDU asdu, int ioa);
-
-/**
- * \brief Handler for clock synchronization command (C_CS_NA_1 - 103)
- */
-typedef bool (*ClockSynchronizationHandler) (void* parameter, MasterConnection connection, ASDU asdu, CP56Time2a newTime);
-
-/**
- * \brief Handler for reset process command (C_RP_NA_1 - 105)
- */
-typedef bool (*ResetProcessHandler ) (void* parameter, MasterConnection connection, ASDU asdu, uint8_t qrp);
-
-/**
- * \brief Handler for delay acquisition command (C_CD_NA:1 - 106)
- */
-typedef bool (*DelayAcquisitionHandler) (void* parameter, MasterConnection connection, ASDU asdu, CP16Time2a delayTime);
-
-/**
- * \brief Handler for ASDUs that are not handled by other handlers (default handler)
- */
-typedef bool (*ASDUHandler) (void* parameter, MasterConnection connection, ASDU asdu);
-
-
-/**
- * \brief Connection request handler is called when a client tries to connect to the server.
+ * @addtogroup SLAVE Slave related functions
  *
- * \param parameter user provided parameter
- * \param ipAddress string containing IP address and TCP port number (e.g. "192.168.1.1:34521")
- *
- * \return true to accept the connection request, false to deny
+ * @{
  */
-typedef bool (*ConnectionRequestHandler) (void* parameter, const char* ipAddress);
 
 /**
- * \brief Create a new instance of a CS104 slave (server)
+ * @defgroup COMMON_SLAVE Common slave related functions and interfaces
  *
- * \param parameters the connection parameters to use (or NULL to use the default parameters)
- * \param maxLowPrioQueueSize the maximum size of the event queue
- * \param maxHighPrioQueueSize the maximum size of the high-priority queue
+ * These definitions are used by both the CS 101 and CS 104 slave implementations.
+ *
+ * @{
  */
-Slave
-T104Slave_create(ConnectionParameters parameters, int maxLowPrioQueueSize, int maxHighPrioQueueSize);
 
 /**
- * \brief Set the local IP address to bind the server
- * use "0.0.0.0" to bind to all interfaces
+ * @defgroup IMASTER_CONNECTION IMasterConnection interface
  *
- * \param self the slave instance
- * \param ipAddress the IP address string or hostname
+ * @{
  */
-void
-T104Slave_setLocalAddress(Slave self, const char* ipAddress);
 
 /**
- * \brief Set the local TCP port to bind the server
- *
- * \param self the slave instance
- * \param tcpPort the TCP port to use (default is 2404)
+ * \brief Interface to send messages to the master (used by slave)
  */
-void
-T104Slave_setLocalPort(Slave self, int tcpPort);
+typedef struct sIMasterConnection* IMasterConnection;
 
-/**
- * \brief Get the number of connected clients
- *
- * \param self the slave instance
- */
-int
-T104Slave_getOpenConnections(Slave self);
-
-/**
- * \brief set the maximum number of open client connections allowed
- *
- * NOTE: the number cannot be larger than the static maximum defined in
- *
- * \param self the slave instance
- * \param maxOpenConnections the maximum number of open client connections allowed
- */
-void
-T104Slave_setMaxOpenConnections(Slave self, int maxOpenConnections);
-
-void
-T104Slave_setServerMode(Slave self, ServerMode serverMode);
-
-void
-T104Slave_setConnectionRequestHandler(Slave self, ConnectionRequestHandler handler, void* parameter);
-
-void
-Slave_setInterrogationHandler(Slave self, InterrogationHandler handler, void*  parameter);
-
-void
-Slave_setCounterInterrogationHandler(Slave self, CounterInterrogationHandler handler, void*  parameter);
-
-/**
- * \brief set handler for read request (C_RD_NA_1 - 102)
- */
-void
-Slave_setReadHandler(Slave self, ReadHandler handler, void* parameter);
-
-void
-Slave_setASDUHandler(Slave self, ASDUHandler handler, void* parameter);
-
-void
-Slave_setClockSyncHandler(Slave self, ClockSynchronizationHandler handler, void* parameter);
-
-ConnectionParameters
-Slave_getConnectionParameters(Slave self);
-
-void
-Slave_start(Slave self);
-
-bool
-Slave_isRunning(Slave self);
-
-void
-Slave_stop(Slave self);
-
-/**
- * \brief Add an ASDU to the low-priority queue of the slave (use for periodic and spontaneous messages)
- *
- * \param asdu the ASDU to add
- */
-void
-Slave_enqueueASDU(Slave self, ASDU asdu);
-
-void
-Slave_destroy(Slave self);
+struct sIMasterConnection {
+    void (*sendASDU) (IMasterConnection self, CS101_ASDU asdu);
+    void (*sendACT_CON) (IMasterConnection self, CS101_ASDU asdu, bool negative);
+    void (*sendACT_TERM) (IMasterConnection self, CS101_ASDU asdu);
+    CS101_AppLayerParameters (*getApplicationLayerParameters) (IMasterConnection self);
+    void* object;
+};
 
 /**
  * \brief Send an ASDU to the client/master
@@ -194,23 +79,104 @@ Slave_destroy(Slave self);
  *
  * \param self the connection object (this is usually received as a parameter of a callback function)
  * \param asdu the ASDU to send to the client/master
- *
- * \return true if message was sent (queued), false otherwise (queue full or connection not active)
  */
-bool
-MasterConnection_sendASDU(MasterConnection self, ASDU asdu);
-
-bool
-MasterConnection_sendACT_CON(MasterConnection self, ASDU asdu, bool negative);
-
-bool
-MasterConnection_sendACT_TERM(MasterConnection self, ASDU asdu);
-
 void
-MasterConnection_close(MasterConnection self);
+IMasterConnection_sendASDU(IMasterConnection self, CS101_ASDU asdu);
 
+/**
+ * \brief Send an ACT_CON ASDU to the client/master
+ *
+ * ACT_CON is used for a command confirmation (positive or negative)
+ *
+ * \param asdu the ASDU to send to the client/master
+ * \param negative value of the negative flag
+ */
 void
-MasterConnection_deactivate(MasterConnection self);
+IMasterConnection_sendACT_CON(IMasterConnection self, CS101_ASDU asdu, bool negative);
+
+/**
+ * \brief Send an ACT_TERM ASDU to the client/master
+ *
+ * ACT_TERM is used to indicate that the command execution is complete.
+ *
+ * \param asdu the ASDU to send to the client/master
+ */
+void
+IMasterConnection_sendACT_TERM(IMasterConnection self, CS101_ASDU asdu);
+
+/**
+ * \brief Get the application layer parameters used by this connection
+ */
+CS101_AppLayerParameters
+IMasterConnection_getApplicationLayerParameters(IMasterConnection self);
+
+/**
+ * @}
+ */
+
+
+/**
+ * @defgroup CALLBACK_HANDLERS Slave callback handlers
+ *
+ * Callback handlers to handle events in the slave
+ */
+
+/**
+ * \brief Handler will be called when a link layer reset CU (communication unit) message is received
+ *
+ * NOTE: Can be used to empty the ASDU queues
+ *
+ * \param parameter a user provided parameter
+ */
+typedef void (*CS101_ResetCUHandler) (void* parameter);
+
+/**
+ * \brief Handler for interrogation command (C_IC_NA_1 - 100).
+ */
+typedef bool (*CS101_InterrogationHandler) (void* parameter, IMasterConnection connection, CS101_ASDU asdu, uint8_t qoi);
+
+/**
+ * \brief Handler for counter interrogation command (C_CI_NA_1 - 101).
+ */
+typedef bool (*CS101_CounterInterrogationHandler) (void* parameter, IMasterConnection connection, CS101_ASDU asdu, QualifierOfCIC qcc);
+
+/**
+ * \brief Handler for read command (C_RD_NA_1 - 102)
+ */
+typedef bool (*CS101_ReadHandler) (void* parameter, IMasterConnection connection, CS101_ASDU asdu, int ioa);
+
+/**
+ * \brief Handler for clock synchronization command (C_CS_NA_1 - 103)
+ */
+typedef bool (*CS101_ClockSynchronizationHandler) (void* parameter, IMasterConnection connection, CS101_ASDU asdu, CP56Time2a newTime);
+
+/**
+ * \brief Handler for reset process command (C_RP_NA_1 - 105)
+ */
+typedef bool (*CS101_ResetProcessHandler ) (void* parameter, IMasterConnection connection, CS101_ASDU asdu, uint8_t qrp);
+
+/**
+ * \brief Handler for delay acquisition command (C_CD_NA:1 - 106)
+ */
+typedef bool (*CS101_DelayAcquisitionHandler) (void* parameter, IMasterConnection connection, CS101_ASDU asdu, CP16Time2a delayTime);
+
+/**
+ * \brief Handler for ASDUs that are not handled by other handlers (default handler)
+ */
+typedef bool (*CS101_ASDUHandler) (void* parameter, IMasterConnection connection, CS101_ASDU asdu);
+
+/**
+ * @}
+ */
+
+/**
+ * @}
+ */
+
+/**
+ * @}
+ */
+
 
 #ifdef __cplusplus
 }

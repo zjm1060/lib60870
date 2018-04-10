@@ -1,5 +1,5 @@
 /*
- *  Copyright 2016 MZ Automation GmbH
+ *  Copyright 2016, 2017 MZ Automation GmbH
  *
  *  This file is part of lib60870-C
  *
@@ -29,19 +29,71 @@
 extern "C" {
 #endif
 
+/**
+ * \file iec60870_common.h
+ * \brief Common definitions for IEC 60870-5-101/104
+ * These types are used by CS101/CS104 master and slaves
+ */
+
+/**
+ * @addtogroup COMMON Common API functions
+ *
+ * @{
+ */
+
+
 #define IEC_60870_5_104_DEFAULT_PORT 2404
+#define IEC_60870_5_104_DEFAULT_TLS_PORT 19998
 
-#define LIB60870_VERSION_MAJOR 0
-#define LIB60870_VERSION_MINOR 9
-#define LIB60870_VERSION_PATCH 5
+#define LIB60870_VERSION_MAJOR 2
+#define LIB60870_VERSION_MINOR 0
+#define LIB60870_VERSION_PATCH 0
 
+/**
+ * \brief lib60870 version information
+ */
 typedef struct {
     int major;
     int minor;
     int patch;
 } Lib60870VersionInfo;
 
-typedef struct sASDU* ASDU;
+/**
+ * \brief link layer mode for serial link layers
+ */
+typedef enum {
+    IEC60870_LINK_LAYER_BALANCED = 0,
+    IEC60870_LINK_LAYER_UNBALANCED = 1
+} IEC60870_LinkLayerMode;
+
+/** \brief State of the link layer */
+typedef enum {
+    /** The link layer is idle, there is no communication */
+    LL_STATE_IDLE,
+
+    /** An error has occurred at the link layer, the link may not be usable */
+    LL_STATE_ERROR,
+
+    /** The link layer is busy and therefore no usable */
+    LL_STATE_BUSY,
+
+    /** The link is available for user data transmission and reception */
+    LL_STATE_AVAILABLE
+} LinkLayerState;
+
+/**
+ * \brief Callback handler for link layer state changes
+ *
+ * \param parameter user provided parameter that is passed to the handler
+ * \param address slave address used by the link layer state machine (only relevant for unbalanced master)
+ * \param newState the new link layer state
+ */
+typedef void (*IEC60870_LinkLayerStateChangedHandler) (void* parameter, int address, LinkLayerState newState);
+
+/**
+ * \brief Application Service Data Unit (ASDU) for the CS101/CS104 application layer
+ */
+typedef struct sCS101_ASDU* CS101_ASDU;
 
 typedef struct sCP16Time2a* CP16Time2a;
 
@@ -55,34 +107,54 @@ struct sCP24Time2a {
     uint8_t encodedValue[3];
 };
 
+typedef struct sCP32Time2a* CP32Time2a;
+
+/**
+ * \brief 4 byte binary time
+ */
+struct sCP32Time2a {
+    uint8_t encodedValue[4];
+};
+
+/**
+ * \brief 7 byte binary time
+ */
 typedef struct sCP56Time2a* CP56Time2a;
 
 struct sCP56Time2a {
     uint8_t encodedValue[7];
 };
 
+/**
+ * \brief Base type for counter readings
+ */
 typedef struct sBinaryCounterReading* BinaryCounterReading;
 
 struct sBinaryCounterReading {
     uint8_t encodedValue[5];
 };
 
-typedef struct sConnectionParameters* ConnectionParameters;
+/**
+ * \brief Parameters for the CS101/CS104 application layer
+ */
+typedef struct sCS101_AppLayerParameters* CS101_AppLayerParameters;
 
-typedef struct sT104ConnectionParameters* T104ConnectionParameters;
+struct sCS101_AppLayerParameters {
+    int sizeOfTypeId;      /* size of the type id (default = 1 - don't change) */
+    int sizeOfVSQ;         /* don't change */
+    int sizeOfCOT;         /* size of COT (1/2 - default = 2 -> COT includes OA) */
+    int originatorAddress; /* originator address (OA) to use (0-255) */
+    int sizeOfCA;          /* size of common address (CA) of ASDU (1/2 - default = 2) */
+    int sizeOfIOA;         /* size of information object address (IOA) (1/2/3 - default = 3) */
+    int maxSizeOfASDU;     /* maximum size of the ASDU that is generated - the maximum maximum value is 249 for IEC 104 and 254 for IEC 101 */
+};
 
-#include "information_objects.h"
+/**
+ * \brief Parameters for CS104 connections - APCI (application protocol control information)
+ */
+typedef struct sCS104_APCIParameters* CS104_APCIParameters;
 
-struct sT104ConnectionParameters {
-    /* Application layer parameters */
-    int sizeOfTypeId;
-    int sizeOfVSQ;
-    int sizeOfCOT;
-    int originatorAddress;
-    int sizeOfCA;
-    int sizeOfIOA;
-
-    /* data link layer/protocol specific parameters */
+struct sCS104_APCIParameters {
     int k;
     int w;
     int t0;
@@ -91,18 +163,11 @@ struct sT104ConnectionParameters {
     int t3;
 };
 
-struct sConnectionParameters {
-    /* Application layer parameters */
-    int sizeOfTypeId;
-    int sizeOfVSQ;
-    int sizeOfCOT;
-    int originatorAddress;
-    int sizeOfCA;
-    int sizeOfIOA;
+#include "cs101_information_objects.h"
 
-    /* data link layer/protocol specific parameters */
-};
-
+/**
+ * \brief Message type IDs
+ */
 typedef enum {
     M_SP_NA_1 = 1,
     M_SP_TA_1 = 2,
@@ -179,52 +244,52 @@ const char*
 TypeID_toString(TypeID self);
 
 typedef enum {
-    PERIODIC = 1,
-    BACKGROUND_SCAN = 2,
-    SPONTANEOUS = 3,
-    INITIALIZED = 4,
-    REQUEST = 5,
-    ACTIVATION = 6,
-    ACTIVATION_CON = 7,
-    DEACTIVATION = 8,
-    DEACTIVATION_CON = 9,
-    ACTIVATION_TERMINATION = 10,
-    RETURN_INFO_REMOTE = 11,
-    RETURN_INFO_LOCAL = 12,
-    FILE_TRANSFER = 13,
-    AUTHENTICATION = 14,
-    MAINTENANCE_OF_AUTH_SESSION_KEY = 15,
-    MAINTENANCE_OF_USER_ROLE_AND_UPDATE_KEY = 16,
-    INTERROGATED_BY_STATION = 20,
-    INTERROGATED_BY_GROUP_1 = 21,
-    INTERROGATED_BY_GROUP_2 = 22,
-    INTERROGATED_BY_GROUP_3 = 23,
-    INTERROGATED_BY_GROUP_4 = 24,
-    INTERROGATED_BY_GROUP_5 = 25,
-    INTERROGATED_BY_GROUP_6 = 26,
-    INTERROGATED_BY_GROUP_7 = 27,
-    INTERROGATED_BY_GROUP_8 = 28,
-    INTERROGATED_BY_GROUP_9 = 29,
-    INTERROGATED_BY_GROUP_10 = 30,
-    INTERROGATED_BY_GROUP_11 = 31,
-    INTERROGATED_BY_GROUP_12 = 32,
-    INTERROGATED_BY_GROUP_13 = 33,
-    INTERROGATED_BY_GROUP_14 = 34,
-    INTERROGATED_BY_GROUP_15 = 35,
-    INTERROGATED_BY_GROUP_16 = 36,
-    REQUESTED_BY_GENERAL_COUNTER = 37,
-    REQUESTED_BY_GROUP_1_COUNTER = 38,
-    REQUESTED_BY_GROUP_2_COUNTER = 39,
-    REQUESTED_BY_GROUP_3_COUNTER = 40,
-    REQUESTED_BY_GROUP_4_COUNTER = 41,
-    UNKNOWN_TYPE_ID = 44,
-    UNKNOWN_CAUSE_OF_TRANSMISSION = 45,
-    UNKNOWN_COMMON_ADDRESS_OF_ASDU = 46,
-    UNKNOWN_INFORMATION_OBJECT_ADDRESS = 47
-} CauseOfTransmission;
+    CS101_COT_PERIODIC = 1,
+    CS101_COT_BACKGROUND_SCAN = 2,
+    CS101_COT_SPONTANEOUS = 3,
+    CS101_COT_INITIALIZED = 4,
+    CS101_COT_REQUEST = 5,
+    CS101_COT_ACTIVATION = 6,
+    CS101_COT_ACTIVATION_CON = 7,
+    CS101_COT_DEACTIVATION = 8,
+    CS101_COT_DEACTIVATION_CON = 9,
+    CS101_COT_ACTIVATION_TERMINATION = 10,
+    CS101_COT_RETURN_INFO_REMOTE = 11,
+    CS101_COT_RETURN_INFO_LOCAL = 12,
+    CS101_COT_FILE_TRANSFER = 13,
+    CS101_COT_AUTHENTICATION = 14,
+    CS101_COT_MAINTENANCE_OF_AUTH_SESSION_KEY = 15,
+    CS101_COT_MAINTENANCE_OF_USER_ROLE_AND_UPDATE_KEY = 16,
+    CS101_COT_INTERROGATED_BY_STATION = 20,
+    CS101_COT_INTERROGATED_BY_GROUP_1 = 21,
+    CS101_COT_INTERROGATED_BY_GROUP_2 = 22,
+    CS101_COT_INTERROGATED_BY_GROUP_3 = 23,
+    CS101_COT_INTERROGATED_BY_GROUP_4 = 24,
+    CS101_COT_INTERROGATED_BY_GROUP_5 = 25,
+    CS101_COT_INTERROGATED_BY_GROUP_6 = 26,
+    CS101_COT_INTERROGATED_BY_GROUP_7 = 27,
+    CS101_COT_INTERROGATED_BY_GROUP_8 = 28,
+    CS101_COT_INTERROGATED_BY_GROUP_9 = 29,
+    CS101_COT_INTERROGATED_BY_GROUP_10 = 30,
+    CS101_COT_INTERROGATED_BY_GROUP_11 = 31,
+    CS101_COT_INTERROGATED_BY_GROUP_12 = 32,
+    CS101_COT_INTERROGATED_BY_GROUP_13 = 33,
+    CS101_COT_INTERROGATED_BY_GROUP_14 = 34,
+    CS101_COT_INTERROGATED_BY_GROUP_15 = 35,
+    CS101_COT_INTERROGATED_BY_GROUP_16 = 36,
+    CS101_COT_REQUESTED_BY_GENERAL_COUNTER = 37,
+    CS101_COT_REQUESTED_BY_GROUP_1_COUNTER = 38,
+    CS101_COT_REQUESTED_BY_GROUP_2_COUNTER = 39,
+    CS101_COT_REQUESTED_BY_GROUP_3_COUNTER = 40,
+    CS101_COT_REQUESTED_BY_GROUP_4_COUNTER = 41,
+    CS101_COT_UNKNOWN_TYPE_ID = 44,
+    CS101_COT_UNKNOWN_COT = 45,
+    CS101_COT_UNKNOWN_CA = 46,
+    CS101_COT_UNKNOWN_IOA = 47
+} CS101_CauseOfTransmission;
 
 const char*
-CauseOfTransmission_toString(CauseOfTransmission self);
+CS101_CauseOfTransmission_toString(CS101_CauseOfTransmission self);
 
 void
 Lib60870_enableDebugOutput(bool value);
@@ -232,51 +297,116 @@ Lib60870_enableDebugOutput(bool value);
 Lib60870VersionInfo
 Lib60870_getLibraryVersionInfo(void);
 
+/**
+ * \brief Check if the test flag of the ASDU is set
+ */
 bool
-ASDU_isTest(ASDU self);
+CS101_ASDU_isTest(CS101_ASDU self);
 
+/**
+ * \brief Set the test flag of the ASDU
+ */
 void
-ASDU_setTest(ASDU self, bool value);
+CS101_ASDU_setTest(CS101_ASDU self, bool value);
 
+/**
+ * \brief Check if the negative flag of the ASDU is set
+ */
 bool
-ASDU_isNegative(ASDU self);
+CS101_ASDU_isNegative(CS101_ASDU self);
 
+/**
+ * \brief Set the negative flag of the ASDU
+ */
 void
-ASDU_setNegative(ASDU self, bool value);
+CS101_ASDU_setNegative(CS101_ASDU self, bool value);
 
+/**
+ * \brief get the OA (originator address) of the ASDU.
+ */
 int
-ASDU_getOA(ASDU self);
+CS101_ASDU_getOA(CS101_ASDU self);
 
-CauseOfTransmission
-ASDU_getCOT(ASDU self);
+/**
+ * \brief Get the cause of transmission (COT) of the ASDU
+ */
+CS101_CauseOfTransmission
+CS101_ASDU_getCOT(CS101_ASDU self);
 
+/**
+ * \brief Set the cause of transmission (COT) of the ASDU
+ */
 void
-ASDU_setCOT(ASDU self, CauseOfTransmission value);
+CS101_ASDU_setCOT(CS101_ASDU self, CS101_CauseOfTransmission value);
 
+/**
+ * \brief Get the common address (CA) of the ASDU
+ */
 int
-ASDU_getCA(ASDU self);
+CS101_ASDU_getCA(CS101_ASDU self);
 
+/**
+ * \brief Set the common address (CA) of the ASDU
+ *
+ * \param ca the ca in unstructured form
+ */
 void
-ASDU_setCA(ASDU self, int ca);
+CS101_ASDU_setCA(CS101_ASDU self, int ca);
 
+
+/**
+ * \brief Get the type ID of the ASDU
+ */
 IEC60870_5_TypeID
-ASDU_getTypeID(ASDU self);
+CS101_ASDU_getTypeID(CS101_ASDU self);
 
+/**
+ * \brief Check if the ASDU contains a sequence of consecutive information objects
+ *
+ * NOTE: in a sequence of consecutive information objects only the first information object address
+ * is encoded. The following information objects ahve consecutive information object addresses.
+ */
 bool
-ASDU_isSequence(ASDU self);
+CS101_ASDU_isSequence(CS101_ASDU self);
 
+/**
+ * \brief Get the number of information objects (elements) in the ASDU
+ */
 int
-ASDU_getNumberOfElements(ASDU self);
+CS101_ASDU_getNumberOfElements(CS101_ASDU self);
 
+/**
+ * \brief Get the information object with the given index
+ *
+ * \param index the index of the information object (starting with 0)
+ *
+ * \return the information object, or NULL if there is no information object with the given index
+ */
 InformationObject
-ASDU_getElement(ASDU self, int index);
+CS101_ASDU_getElement(CS101_ASDU self, int index);
 
-ASDU
-ASDU_create(ConnectionParameters parameters, TypeID typeId, bool isSequence, CauseOfTransmission cot, int oa, int ca,
+/**
+ * \brief Create a new ASDU. The type ID will be derived from the first InformationObject that will be added
+ *
+ * \param parameters the application layer parameters used to encode the ASDU
+ * \param isSequence if the information objects will be encoded as a compact sequence of information objects with subsequent IOA values
+ * \param cot cause of transmission (COT)
+ * \param oa originator address (OA) to be used
+ * \param ca the common address (CA) of the ASDU
+ * \param isTest if the test flag will be set or not
+ * \param isNegative if the negative falg will be set or not
+ *
+ * \return the new CS101_ASDU instance
+ */
+CS101_ASDU
+CS101_ASDU_create(CS101_AppLayerParameters parameters, bool isSequence, CS101_CauseOfTransmission cot, int oa, int ca,
         bool isTest, bool isNegative);
 
+/**
+ * \brief Destroy the ASDU object (release all resources)
+ */
 void
-ASDU_destroy(ASDU self);
+CS101_ASDU_destroy(CS101_ASDU self);
 
 /**
  * \brief add an information object to the ASDU
@@ -287,65 +417,157 @@ ASDU_destroy(ASDU self);
  * \return true when added, false when there not enough space left in the ASDU or IO cannot be added to the sequence because of wrong IOA.
  */
 bool
-ASDU_addInformationObject(ASDU self, InformationObject io);
+CS101_ASDU_addInformationObject(CS101_ASDU self, InformationObject io);
 
 /**
- * \brief create a new (read-only) instance
- *
- * NOTE: Do not try to append information objects to the instance!
+ * \brief Get the elapsed time in ms
  */
-//TODO internal - remove from API
-ASDU
-ASDU_createFromBuffer(ConnectionParameters parameters, uint8_t* msg, int msgLength);
-
-//TODO internal - remove from API
-bool
-ASDU_isStackCreated(ASDU self);
-
 int
 CP16Time2a_getEplapsedTimeInMs(CP16Time2a self);
 
+/**
+ * \brief set the elapsed time in ms
+ */
 void
 CP16Time2a_setEplapsedTimeInMs(CP16Time2a self, int value);
 
+/**
+ * \brief Get the millisecond part of the time value
+ */
+int
+CP24Time2a_getMillisecond(CP24Time2a self);
 
+/**
+ * \brief Set the millisecond part of the time value
+ */
+void
+CP24Time2a_setMillisecond(CP24Time2a self, int value);
+
+/**
+ * \brief Get the second part of the time value
+ */
 int
 CP24Time2a_getSecond(CP24Time2a self);
 
+/**
+ * \brief Set the second part of the time value
+ */
 void
 CP24Time2a_setSecond(CP24Time2a self, int value);
 
+/**
+ * \brief Get the minute part of the time value
+ */
 int
 CP24Time2a_getMinute(CP24Time2a self);
 
+/**
+ * \brief Set the minute part of the time value
+ */
 void
 CP24Time2a_setMinute(CP24Time2a self, int value);
 
+/**
+ * \brief Check if the invalid flag of the time value is set
+ */
 bool
 CP24Time2a_isInvalid(CP24Time2a self);
 
+/**
+ * \brief Set the invalid flag of the time value
+ */
 void
 CP24Time2a_setInvalid(CP24Time2a self, bool value);
 
+/**
+ * \brief Check if the substituted flag of the time value is set
+ */
 bool
 CP24Time2a_isSubstituted(CP24Time2a self);
 
+/**
+ * \brief Set the substituted flag of the time value
+ */
 void
 CP24Time2a_setSubstituted(CP24Time2a self, bool value);
 
-
+/**
+ * \brief Create a 7 byte time from a UTC ms timestamp
+ */
 CP56Time2a
 CP56Time2a_createFromMsTimestamp(CP56Time2a self, uint64_t timestamp);
 
+
+CP32Time2a
+CP32Time2a_create(CP32Time2a self);
+
+void
+CP32Time2a_setFromMsTimestamp(CP32Time2a self, uint64_t timestamp);
+
+int
+CP32Time2a_getMillisecond(CP32Time2a self);
+
+void
+CP32Time2a_setMillisecond(CP32Time2a self, int value);
+
+int
+CP32Time2a_getSecond(CP32Time2a self);
+
+void
+CP32Time2a_setSecond(CP32Time2a self, int value);
+
+int
+CP32Time2a_getMinute(CP32Time2a self);
+
+
+void
+CP32Time2a_setMinute(CP32Time2a self, int value);
+
+bool
+CP32Time2a_isInvalid(CP32Time2a self);
+
+void
+CP32Time2a_setInvalid(CP32Time2a self, bool value);
+
+bool
+CP32Time2a_isSubstituted(CP32Time2a self);
+
+void
+CP32Time2a_setSubstituted(CP32Time2a self, bool value);
+
+int
+CP32Time2a_getHour(CP32Time2a self);
+
+void
+CP32Time2a_setHour(CP32Time2a self, int value);
+
+bool
+CP32Time2a_isSummerTime(CP32Time2a self);
+
+void
+CP32Time2a_setSummerTime(CP32Time2a self, bool value);
+
+/**
+ * \brief Set the time value of a 7 byte time from a UTC ms timestamp
+ */
 void
 CP56Time2a_setFromMsTimestamp(CP56Time2a self, uint64_t timestamp);
 
+/**
+ * \brief Convert a 7 byte time to a ms timestamp
+ */
 uint64_t
 CP56Time2a_toMsTimestamp(CP56Time2a self);
 
+/**
+ * \brief Get the ms part of a time value
+ */
 int
 CP56Time2a_getMillisecond(CP56Time2a self);
 
+/**
+ * \brief Set the ms part of a time value
+ */
 void
 CP56Time2a_setMillisecond(CP56Time2a self, int value);
 
@@ -395,9 +617,19 @@ CP56Time2a_getMonth(CP56Time2a self);
 void
 CP56Time2a_setMonth(CP56Time2a self, int value);
 
+/**
+ * \brief Get the year (range 0..99)
+ *
+ * \param value the year (0.99)
+ */
 int
 CP56Time2a_getYear(CP56Time2a self);
 
+/**
+ * \brief Set the year
+ *
+ * \param value the year
+ */
 void
 CP56Time2a_setYear(CP56Time2a self, int value);
 
@@ -455,6 +687,33 @@ BinaryCounterReading_setAdjusted(BinaryCounterReading self, bool value);
 
 void
 BinaryCounterReading_setInvalid(BinaryCounterReading self, bool value);
+
+/**
+ * @}
+ */
+
+typedef struct sFrame* Frame;
+
+void
+Frame_destroy(Frame self);
+
+void
+Frame_resetFrame(Frame self);
+
+void
+Frame_setNextByte(Frame self, uint8_t byte);
+
+void
+Frame_appendBytes(Frame self, uint8_t* bytes, int numberOfBytes);
+
+int
+Frame_getMsgSize(Frame self);
+
+uint8_t*
+Frame_getBuffer(Frame self);
+
+int
+Frame_getSpaceLeft(Frame self);
 
 #ifdef __cplusplus
 }

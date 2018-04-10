@@ -26,6 +26,34 @@
 #include <stdbool.h>
 
 #include "iec60870_common.h"
-#include "t104_connection.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * \file iec60870_master.h
+ * \brief Common master side definitions for IEC 60870-5-101/104
+ * These types are used by CS101/CS104 master
+ */
+
+/**
+ * \brief Callback handler for received ASDUs
+ *
+ * This callback handler will be called for each received ASDU.
+ * The CS101_ASDU object that is passed is only valid in the context
+ * of the callback function.
+ *
+ * \param parameter user provided parameter
+ * \param address address of the sender (slave/other station) - undefined for CS 104
+ * \param asdu object representing the received ASDU
+ *
+ * \return true if the ASDU has been handled by the callback, false otherwise
+ */
+typedef bool (*CS101_ASDUReceivedHandler) (void* parameter, int address, CS101_ASDU asdu);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SRC_IEC60870_MASTER_H_ */

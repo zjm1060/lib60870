@@ -22,6 +22,7 @@
 #include "hal_socket.h"
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <string.h>
@@ -178,7 +179,7 @@ TcpServerSocket_create(const char* address, int port)
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &optionReuseAddr, sizeof(int));
 
         if (bind(fd, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) >= 0) {
-            serverSocket = GLOBAL_MALLOC(sizeof(struct sServerSocket));
+            serverSocket = (ServerSocket) GLOBAL_MALLOC(sizeof(struct sServerSocket));
             serverSocket->fd = fd;
             serverSocket->backLog = 0;
 
@@ -259,7 +260,7 @@ ServerSocket_destroy(ServerSocket self)
 Socket
 TcpSocket_create()
 {
-    Socket self = GLOBAL_MALLOC(sizeof(struct sSocket));
+    Socket self = (Socket) GLOBAL_MALLOC(sizeof(struct sSocket));
 
     self->fd = -1;
     self->connectTimeout = 5000;
@@ -353,7 +354,7 @@ Socket_getPeerAddress(Socket self)
     else
         return NULL ;
 
-    char* clientConnection = GLOBAL_MALLOC(strlen(addrString) + 9);
+    char* clientConnection = (char*) GLOBAL_MALLOC(strlen(addrString) + 9);
 
 
     if (isIPv6)

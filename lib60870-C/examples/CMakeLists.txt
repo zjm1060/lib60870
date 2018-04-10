@@ -1,3 +1,12 @@
-add_subdirectory(simple_client)
-add_subdirectory(simple_server)
+add_subdirectory(cs101_master_balanced)
+add_subdirectory(cs101_master_unbalanced)
+add_subdirectory(cs101_slave)
+add_subdirectory(cs104_client)
+add_subdirectory(cs104_server)
 add_subdirectory(multi_client_server)
+
+if (WITH_MBEDTLS)
+add_subdirectory(tls_client)
+add_subdirectory(tls_server)
+endif (WITH_MBEDTLS)
+

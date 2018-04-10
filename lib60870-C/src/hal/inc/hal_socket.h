@@ -25,11 +25,21 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/**
+ * \file hal_socket.h
+ * \brief Abstraction layer TCP/IP sockets
+ * Has to be implemented for CS 104 TCP/IP.
+ */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/*! \addtogroup hal Platform (Hardware/OS) abstraction layer
+/*! \defgroup hal Platform (Hardware/OS) abstraction layer
+   *
+   *  Platform abstraction layer. These functions have to be implemented when the library is
+   *  to be ported to new platforms. It might not be required to implement all interfaces
+   *  depending on the required library features.
    *
    *  @{
    */
@@ -38,7 +48,7 @@ extern "C" {
  * @defgroup HAL_SOCKET Interface to the TCP/IP stack (abstract socket layer)
  *
  *  Thread and Socket abstraction layer. This functions have to be implemented to
- *  port libIEC61850 to a new hardware/OS platform.
+ *  port lib60870 to a new hardware/OS platform when TCP/IP is required.
  *
  * @{
  */
