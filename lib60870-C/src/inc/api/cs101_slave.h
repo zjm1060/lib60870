@@ -61,7 +61,8 @@ typedef struct sCS101_Slave* CS101_Slave;
 /**
  * \brief Create a new balanced or unbalanced CS101 slave
  *
- * The CS101_Slave instance has two separate data queues for class 1 and class 2 data.
+ * NOTE: The CS101_Slave instance has two separate data queues for class 1 and class 2 data.
+ * This constructor uses the default max queue size for both queues.
  *
  * \param serialPort the serial port to be used
  * \param llParameters the link layer parameters to be used
@@ -74,12 +75,41 @@ CS101_Slave
 CS101_Slave_create(SerialPort serialPort, LinkLayerParameters llParameters, CS101_AppLayerParameters alParameters, IEC60870_LinkLayerMode linkLayerMode);
 
 /**
+ * \brief Create a new balanced or unbalanced CS101 slave
+ *
+ * NOTE: The CS101_Slave instance has two separate data queues for class 1 and class 2 data.
+ *
+ * \param serialPort the serial port to be used
+ * \param llParameters the link layer parameters to be used
+ * \param alParameters the CS101 application layer parameters
+ * \param linkLayerMode the link layer mode (either BALANCED or UNBALANCED)
+ * \param class1QueueSize size of the class1 data queue
+ * \param class2QueueSize size of the class2 data queue
+ *
+ * \return the new slave instance
+ */
+CS101_Slave
+CS101_Slave_createEx(SerialPort serialPort, LinkLayerParameters llParameters, CS101_AppLayerParameters alParameters, IEC60870_LinkLayerMode linkLayerMode,
+        int class1QueueSize, int class2QueueSize);
+
+/**
  * \brief Destroy the slave instance and cleanup all resources
  *
  * \param self CS101_Slave instance
  */
 void
 CS101_Slave_destroy(CS101_Slave self);
+
+/**
+ * \brief Set the value of the DIR bit when sending messages (only balanced mode)
+ *
+ * NOTE: Default value is false (controlled station). In the case of two equivalent stations
+ * the value is defined by agreement.
+ *
+ * \param dir the value of the DIR bit when sending messages
+ */
+void
+CS101_Slave_setDIR(CS101_Slave self, bool dir);
 
 /**
  * \brief Set the idle timeout
@@ -288,6 +318,15 @@ CS101_Slave_setDelayAcquisitionHandler(CS101_Slave self, CS101_DelayAcquisitionH
  */
 void
 CS101_Slave_setASDUHandler(CS101_Slave self, CS101_ASDUHandler handler, void* parameter);
+
+/**
+ * \brief Set the raw message callback (called when a message is sent or received)
+ *
+ * \param handler user provided callback handler function
+ * \param parameter user provided parameter that is passed to the callback handler
+ */
+void
+CS101_Slave_setRawMessageHandler(CS101_Slave self, IEC60870_RawMessageHandler handler, void* parameter);
 
 /**
  * @}

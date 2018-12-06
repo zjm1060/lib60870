@@ -1,3 +1,44 @@
+Changes to version 2.1.1
+------------------------
+- CS 104 slave: added functions IMasterConnection_getPeerAddress and IMasterConnection_close
+- CS 101/CS 104 slave: set P/N=1 (negative) when sending COT=44 or COT=45
+- improved compatibility with VxWorks
+- CS 104 slave: fixed bug in counter interrogation command handling - free stack allocated memory
+- fixed some include file problems
+
+
+Changes to version 2.1.0
+------------------------
+- CS104 slave: added support for multiple redundancy groups
+- added non-threaded moded for CS 104 slave
+- separated thread and semaphore support for CS 104 slave
+- CS101 unbalanced link layer (master): automatically send request UD 1 when ACD bit is set in received frame
+- added CS101_ASDU_getElementEx function to avoid dynamic memory allocation
+- added support for static ASDU object allocation
+- fixed length check when parsing M_EP_TD_1
+- CS101 unbalanced master: fixed state machine problem with multiple slaves (some responses don't change state and master keeps locked on the slave)
+- optionally compile library without HAL to simply using together with libiec61850
+
+
+Changes to version 2.0.2
+------------------------
+- CS104 slave: added new CS104_ConnectionEventHandler to track connection events
+- CS104 master/slave: added callback handlers to log raw messages
+- CS101 master/slave: added callback handlers to log raw messages
+
+
+Changes to version 2.0.1
+------------------------
+- fixed problems to compile code with C++
+- CS101: added functions to better control link layer addresses
+- CS101 master: added function to modify default link layer parameters
+- link layer: fixed problem in test function handling
+- application layer: allow configuration of maximum size of ASDU
+- CS104 master: added new function CS104_Master_sendProcessCommandEx
+- CS104: fixed timeout T2 problem
+- and other small fixes
+
+
 Changes to version 2.0.0
 ------------------------
 - added support for CS 101 balanced and unbalanced serial link layer

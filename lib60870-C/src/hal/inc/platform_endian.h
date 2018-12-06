@@ -22,7 +22,7 @@
 #ifndef ENDIAN_H_
 #define ENDIAN_H_
 
-#include "stack_config.h"
+#include "lib60870_config.h"
 
 #ifndef PLATFORM_IS_BIGENDIAN
 #ifdef __GNUC__

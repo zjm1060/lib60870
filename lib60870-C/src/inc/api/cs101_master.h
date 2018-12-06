@@ -68,6 +68,21 @@ CS101_Master
 CS101_Master_create(SerialPort port, LinkLayerParameters llParameters, CS101_AppLayerParameters alParameters, IEC60870_LinkLayerMode mode);
 
 /**
+ * \brief Create a new master instance and specify message queue size (for balanced mode)
+ *
+ * \param port the serial port to use
+ * \param llParameters the link layer parameters to use
+ * \param alParameters the application layer parameters to use
+ * \param mode the link layer mode (either IEC60870_LINK_LAYER_BALANCED or IEC60870_LINK_LAYER_UNBALANCED)
+ * \param queueSize set the message queue size (only for balanced mode)
+ *
+ * \return the new CS101_Master instance
+ */
+CS101_Master
+CS101_Master_createEx(SerialPort serialPort, LinkLayerParameters llParameters, CS101_AppLayerParameters alParameters, IEC60870_LinkLayerMode linkLayerMode,
+        int queueSize);
+
+/**
  * \brief Receive a new message and run the protocol state machine(s).
  *
  * NOTE: This function has to be called frequently in order to send and
@@ -291,6 +306,26 @@ CS101_Master_setASDUReceivedHandler(CS101_Master self, CS101_ASDUReceivedHandler
  */
 void
 CS101_Master_setLinkLayerStateChanged(CS101_Master self, IEC60870_LinkLayerStateChangedHandler handler, void* parameter);
+
+/**
+ * \brief Set the raw message callback (called when a message is sent or received)
+ *
+ * \param handler user provided callback handler function
+ * \param parameter user provided parameter that is passed to the callback handler
+ */
+void
+CS101_Master_setRawMessageHandler(CS101_Master self, IEC60870_RawMessageHandler handler, void* parameter);
+
+/**
+ * \brief Set the idle timeout (only for balanced mode)
+ *
+ * Time with no activity after which the connection is considered
+ * in idle (LL_STATE_IDLE) state.
+ *
+ * \param timeoutInMs the timeout value in milliseconds
+ */
+void
+CS101_Master_setIdleTimeout(CS101_Master self, int timeoutInMs);
 
 /**
  * @}

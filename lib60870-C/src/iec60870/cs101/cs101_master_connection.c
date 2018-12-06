@@ -46,3 +46,19 @@ IMasterConnection_getApplicationLayerParameters(IMasterConnection self)
 {
     return self->getApplicationLayerParameters(self);
 }
+
+void
+IMasterConnection_close(IMasterConnection self)
+{
+    if (self->close)
+        self->close(self);
+}
+
+int
+IMasterConnection_getPeerAddress(IMasterConnection self, char* addrBuf, int addrBufSize)
+{
+    if (self->getPeerAddress)
+        return self->getPeerAddress(self, addrBuf, addrBufSize);
+    else
+        return 0;
+}

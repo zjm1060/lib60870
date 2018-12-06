@@ -22,6 +22,23 @@ sigint_handler(int signalId)
     running = false;
 }
 
+/* Callback handler to log sent or received messages (optional) */
+static void
+rawMessageHandler (void* parameter, uint8_t* msg, int msgSize, bool sent)
+{
+    if (sent)
+        printf("SEND: ");
+    else
+        printf("RCVD: ");
+
+    int i;
+    for (i = 0; i < msgSize; i++) {
+        printf("%02x ", msg[i]);
+    }
+
+    printf("\n");
+}
+
 static bool
 asduReceivedHandler (void* parameter, int address, CS101_ASDU asdu)
 {
@@ -106,6 +123,9 @@ main(int argc, char** argv)
 
     CS101_Master master = CS101_Master_create(port, NULL, NULL, IEC60870_LINK_LAYER_BALANCED);
 
+
+    CS101_Master_setOwnAddress(master, 3);
+
     /* Set the address of the slave (optional for balanced master */
     CS101_Master_useSlaveAddress(master, 3);
 
@@ -118,6 +138,9 @@ main(int argc, char** argv)
 
     /* set handler for link layer state changes */
     CS101_Master_setLinkLayerStateChanged(master, linkLayerStateChanged, NULL);
+
+    /* uncomment to log messages */
+    //CS101_Master_setRawMessageHandler(master, rawMessageHandler, NULL);
 
     SerialPort_open(port);
 

@@ -24,7 +24,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "tls_api.h"
+
+#include "tls_socket.h"
 #include "iec60870_master.h"
 
 #ifdef __cplusplus
@@ -236,6 +237,9 @@ CS104_Connection_sendTestCommand(CS104_Connection self, int ca);
 /**
  * \brief Send a process command to the controlled (or other) station
  *
+ * \deprecated Use \ref CS104_Connection_sendProcessCommandEx instead
+ *
+ * \param typeId the type ID of the command message to send or 0 to use the type ID of the information object
  * \param cot the cause of transmission (should be ACTIVATION to select/execute or ACT_TERM to cancel the command)
  * \param ca the common address of the information object
  * \param command the command information object (e.g. SingleCommand or DoubleCommand)
@@ -245,6 +249,18 @@ CS104_Connection_sendTestCommand(CS104_Connection self, int ca);
 bool
 CS104_Connection_sendProcessCommand(CS104_Connection self, TypeID typeId, CS101_CauseOfTransmission cot,
         int ca, InformationObject command);
+
+/**
+ * \brief Send a process command to the controlled (or other) station
+ *
+ * \param cot the cause of transmission (should be ACTIVATION to select/execute or ACT_TERM to cancel the command)
+ * \param ca the common address of the information object
+ * \param command the command information object (e.g. SingleCommand or DoubleCommand)
+ *
+ * \return true if message was sent, false otherwise
+ */
+bool
+CS104_Connection_sendProcessCommandEx(CS104_Connection self, CS101_CauseOfTransmission cot, int ca, InformationObject sc);
 
 
 /**
@@ -283,8 +299,24 @@ typedef enum {
  */
 typedef void (*CS104_ConnectionHandler) (void* parameter, CS104_Connection connection, CS104_ConnectionEvent event);
 
+/**
+ * \brief Set the connection event handler
+ *
+ * \param handler user provided callback handler function
+ * \param parameter user provided parameter that is passed to the callback handler
+ */
 void
 CS104_Connection_setConnectionHandler(CS104_Connection self, CS104_ConnectionHandler handler, void* parameter);
+
+
+/**
+ * \brief Set the raw message callback (called when a message is sent or received)
+ *
+ * \param handler user provided callback handler function
+ * \param parameter user provided parameter that is passed to the callback handler
+ */
+void
+CS104_Connection_setRawMessageHandler(CS104_Connection self, IEC60870_RawMessageHandler handler, void* parameter);
 
 /**
  * \brief Close the connection

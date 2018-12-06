@@ -46,7 +46,7 @@ extern "C" {
 #define IEC_60870_5_104_DEFAULT_TLS_PORT 19998
 
 #define LIB60870_VERSION_MAJOR 2
-#define LIB60870_VERSION_MINOR 0
+#define LIB60870_VERSION_MINOR 1
 #define LIB60870_VERSION_PATCH 0
 
 /**
@@ -91,9 +91,49 @@ typedef enum {
 typedef void (*IEC60870_LinkLayerStateChangedHandler) (void* parameter, int address, LinkLayerState newState);
 
 /**
+ * \brief Callback handler for sent and received messages
+ *
+ * This callback handler provides access to the raw message buffer of received or sent
+ * messages. It can be used for debugging purposes. Usually it is not used nor required
+ * for applications.
+ *
+ * \param parameter user provided parameter
+ * \param msg the message buffer
+ * \param msgSize size of the message
+ * \param sent indicates if the message was sent or received
+ */
+typedef void (*IEC60870_RawMessageHandler) (void* parameter, uint8_t* msg, int msgSize, bool sent);
+
+/**
+ * \brief Parameters for the CS101/CS104 application layer
+ */
+typedef struct sCS101_AppLayerParameters* CS101_AppLayerParameters;
+
+struct sCS101_AppLayerParameters {
+    int sizeOfTypeId;      /* size of the type id (default = 1 - don't change) */
+    int sizeOfVSQ;         /* don't change */
+    int sizeOfCOT;         /* size of COT (1/2 - default = 2 -> COT includes OA) */
+    int originatorAddress; /* originator address (OA) to use (0-255) */
+    int sizeOfCA;          /* size of common address (CA) of ASDU (1/2 - default = 2) */
+    int sizeOfIOA;         /* size of information object address (IOA) (1/2/3 - default = 3) */
+    int maxSizeOfASDU;     /* maximum size of the ASDU that is generated - the maximum maximum value is 249 for IEC 104 and 254 for IEC 101 */
+};
+
+/**
  * \brief Application Service Data Unit (ASDU) for the CS101/CS104 application layer
  */
 typedef struct sCS101_ASDU* CS101_ASDU;
+
+typedef struct {
+    CS101_AppLayerParameters parameters;
+    uint8_t* asdu;
+    int asduHeaderLength;
+    uint8_t* payload;
+    int payloadSize;
+    uint8_t encodedData[256];
+} sCS101_StaticASDU;
+
+typedef sCS101_StaticASDU* CS101_StaticASDU;
 
 typedef struct sCP16Time2a* CP16Time2a;
 
@@ -135,21 +175,6 @@ struct sBinaryCounterReading {
 };
 
 /**
- * \brief Parameters for the CS101/CS104 application layer
- */
-typedef struct sCS101_AppLayerParameters* CS101_AppLayerParameters;
-
-struct sCS101_AppLayerParameters {
-    int sizeOfTypeId;      /* size of the type id (default = 1 - don't change) */
-    int sizeOfVSQ;         /* don't change */
-    int sizeOfCOT;         /* size of COT (1/2 - default = 2 -> COT includes OA) */
-    int originatorAddress; /* originator address (OA) to use (0-255) */
-    int sizeOfCA;          /* size of common address (CA) of ASDU (1/2 - default = 2) */
-    int sizeOfIOA;         /* size of information object address (IOA) (1/2/3 - default = 3) */
-    int maxSizeOfASDU;     /* maximum size of the ASDU that is generated - the maximum maximum value is 249 for IEC 104 and 254 for IEC 101 */
-};
-
-/**
  * \brief Parameters for CS104 connections - APCI (application protocol control information)
  */
 typedef struct sCS104_APCIParameters* CS104_APCIParameters;
@@ -164,84 +189,6 @@ struct sCS104_APCIParameters {
 };
 
 #include "cs101_information_objects.h"
-
-/**
- * \brief Message type IDs
- */
-typedef enum {
-    M_SP_NA_1 = 1,
-    M_SP_TA_1 = 2,
-    M_DP_NA_1 = 3,
-    M_DP_TA_1 = 4,
-    M_ST_NA_1 = 5,
-    M_ST_TA_1 = 6,
-    M_BO_NA_1 = 7,
-    M_BO_TA_1 = 8,
-    M_ME_NA_1 = 9,
-    M_ME_TA_1 = 10,
-    M_ME_NB_1 = 11,
-    M_ME_TB_1 = 12,
-    M_ME_NC_1 = 13,
-    M_ME_TC_1 = 14,
-    M_IT_NA_1 = 15,
-    M_IT_TA_1 = 16,
-    M_EP_TA_1 = 17,
-    M_EP_TB_1 = 18,
-    M_EP_TC_1 = 19,
-    M_PS_NA_1 = 20,
-    M_ME_ND_1 = 21,
-    M_SP_TB_1 = 30,
-    M_DP_TB_1 = 31,
-    M_ST_TB_1 = 32,
-    M_BO_TB_1 = 33,
-    M_ME_TD_1 = 34,
-    M_ME_TE_1 = 35,
-    M_ME_TF_1 = 36,
-    M_IT_TB_1 = 37,
-    M_EP_TD_1 = 38,
-    M_EP_TE_1 = 39,
-    M_EP_TF_1 = 40,
-    C_SC_NA_1 = 45,
-    C_DC_NA_1 = 46,
-    C_RC_NA_1 = 47,
-    C_SE_NA_1 = 48,
-    C_SE_NB_1 = 49,
-    C_SE_NC_1 = 50,
-    C_BO_NA_1 = 51,
-    C_SC_TA_1 = 58,
-    C_DC_TA_1 = 59,
-    C_RC_TA_1 = 60,
-    C_SE_TA_1 = 61,
-    C_SE_TB_1 = 62,
-    C_SE_TC_1 = 63,
-    C_BO_TA_1 = 64,
-    M_EI_NA_1 = 70,
-    C_IC_NA_1 = 100,
-    C_CI_NA_1 = 101,
-    C_RD_NA_1 = 102,
-    C_CS_NA_1 = 103,
-    C_TS_NA_1 = 104,
-    C_RP_NA_1 = 105,
-    C_CD_NA_1 = 106,
-    C_TS_TA_1 = 107,
-    P_ME_NA_1 = 110,
-    P_ME_NB_1 = 111,
-    P_ME_NC_1 = 112,
-    P_AC_NA_1 = 113,
-    F_FR_NA_1 = 120,
-    F_SR_NA_1 = 121,
-    F_SC_NA_1 = 122,
-    F_LS_NA_1 = 123,
-    F_AF_NA_1 = 124,
-    F_SG_NA_1 = 125,
-    F_DR_TA_1 = 126,
-    F_SC_NB_1 = 127
-} IEC60870_5_TypeID;
-
-typedef IEC60870_5_TypeID TypeID;
-
-const char*
-TypeID_toString(TypeID self);
 
 typedef enum {
     CS101_COT_PERIODIC = 1,
@@ -386,6 +333,17 @@ InformationObject
 CS101_ASDU_getElement(CS101_ASDU self, int index);
 
 /**
+ * \brief Get the information object with the given index and store it in the provided information object instance
+ *
+ * \param io if not NULL use the provided information object instance to store the information, has to be of correct type.
+ * \param index the index of the information object (starting with 0)
+ *
+ * \return the information object, or NULL if there is no information object with the given index
+ */
+InformationObject
+CS101_ASDU_getElementEx(CS101_ASDU self, InformationObject io, int index);
+
+/**
  * \brief Create a new ASDU. The type ID will be derived from the first InformationObject that will be added
  *
  * \param parameters the application layer parameters used to encode the ASDU
@@ -400,6 +358,26 @@ CS101_ASDU_getElement(CS101_ASDU self, int index);
  */
 CS101_ASDU
 CS101_ASDU_create(CS101_AppLayerParameters parameters, bool isSequence, CS101_CauseOfTransmission cot, int oa, int ca,
+        bool isTest, bool isNegative);
+
+/**
+ * \brief Create a new ASDU and store it in the provided static ASDU structure.
+ *
+ * NOTE: The type ID will be derived from the first InformationObject that will be added.
+ *
+ * \param self pointer to the statically allocated data structure
+ * \param parameters the application layer parameters used to encode the ASDU
+ * \param isSequence if the information objects will be encoded as a compact sequence of information objects with subsequent IOA values
+ * \param cot cause of transmission (COT)
+ * \param oa originator address (OA) to be used
+ * \param ca the common address (CA) of the ASDU
+ * \param isTest if the test flag will be set or not
+ * \param isNegative if the negative falg will be set or not
+ *
+ * \return the new CS101_ASDU instance
+ */
+CS101_ASDU
+CS101_ASDU_initializeStatic(CS101_StaticASDU self, CS101_AppLayerParameters parameters, bool isSequence, CS101_CauseOfTransmission cot, int oa, int ca,
         bool isTest, bool isNegative);
 
 /**
@@ -418,6 +396,14 @@ CS101_ASDU_destroy(CS101_ASDU self);
  */
 bool
 CS101_ASDU_addInformationObject(CS101_ASDU self, InformationObject io);
+
+/**
+ * \brief remove all information elements from the ASDU object
+ *
+ * \param self ASDU object instance
+ */
+void
+CS101_ASDU_removeAllElements(CS101_ASDU self);
 
 /**
  * \brief Get the elapsed time in ms

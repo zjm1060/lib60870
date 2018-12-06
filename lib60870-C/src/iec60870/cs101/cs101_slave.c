@@ -37,7 +37,7 @@
 #include "cs101_queue.h"
 #include "cs101_asdu_internal.h"
 
-#if (CONFIG_USE_THREADS == 1)
+#if ((CONFIG_USE_THREADS == 1) || (CONFIG_USE_SEMAPHORES == 1))
 #include "hal_thread.h"
 #endif
 
@@ -269,7 +269,8 @@ static struct sCS101_AppLayerParameters defaultAppLayerParameters = {
 };
 
 CS101_Slave
-CS101_Slave_create(SerialPort serialPort, LinkLayerParameters llParameters, CS101_AppLayerParameters alParameters, IEC60870_LinkLayerMode linkLayerMode)
+CS101_Slave_createEx(SerialPort serialPort, LinkLayerParameters llParameters, CS101_AppLayerParameters alParameters, IEC60870_LinkLayerMode linkLayerMode,
+        int class1QueueSize, int class2QueueSize)
 {
     CS101_Slave self = (CS101_Slave) GLOBAL_MALLOC(sizeof(struct sCS101_Slave));
 
@@ -331,13 +332,21 @@ CS101_Slave_create(SerialPort serialPort, LinkLayerParameters llParameters, CS10
         self->iMasterConnection.sendACT_CON = sendACT_CON;
         self->iMasterConnection.sendACT_TERM = sendACT_TERM;
         self->iMasterConnection.getApplicationLayerParameters = getApplicationLayerParameters;
+        self->iMasterConnection.close = NULL;
+        self->iMasterConnection.getPeerAddress = NULL;
         self->iMasterConnection.object = self;
 
-        CS101_Queue_initialize(&(self->userDataClass1Queue), CS101_MAX_QUEUE_SIZE);
-        CS101_Queue_initialize(&(self->userDataClass2Queue), CS101_MAX_QUEUE_SIZE);
+        CS101_Queue_initialize(&(self->userDataClass1Queue), class1QueueSize);
+        CS101_Queue_initialize(&(self->userDataClass2Queue), class2QueueSize);
     }
 
     return self;
+}
+
+CS101_Slave
+CS101_Slave_create(SerialPort serialPort, LinkLayerParameters llParameters, CS101_AppLayerParameters alParameters, IEC60870_LinkLayerMode linkLayerMode)
+{
+    return CS101_Slave_createEx(serialPort, llParameters, alParameters, linkLayerMode, CS101_MAX_QUEUE_SIZE, CS101_MAX_QUEUE_SIZE);
 }
 
 void
@@ -357,6 +366,14 @@ CS101_Slave_destroy(CS101_Slave self)
         CS101_Queue_dispose(&(self->userDataClass2Queue));
 
         GLOBAL_FREEMEM(self);
+    }
+}
+
+void
+CS101_Slave_setDIR(CS101_Slave self, bool dir)
+{
+    if (self->linkLayerMode == IEC60870_LINK_LAYER_BALANCED) {
+        LinkLayerBalanced_setDIR(self->balancedLinkLayer, dir);
     }
 }
 
@@ -437,7 +454,7 @@ CS101_Slave_run(CS101_Slave self)
     else
         LinkLayerBalanced_run(self->balancedLinkLayer);
 
-    //TODO handle file transmission
+    /* TODO handle file transmission */
 }
 
 #if (CONFIG_USE_THREADS == 1)
@@ -554,6 +571,7 @@ responseCOTUnknown(CS101_ASDU asdu, IMasterConnection self)
 {
     DEBUG_PRINT("  with unknown COT\n");
     CS101_ASDU_setCOT(asdu, CS101_COT_UNKNOWN_COT);
+    CS101_ASDU_setNegative(asdu, true);
     sendASDU(self, asdu);
 }
 
@@ -579,13 +597,13 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
         if ((cot == CS101_COT_ACTIVATION) || (cot == CS101_COT_DEACTIVATION)) {
             if (self->interrogationHandler != NULL) {
 
-                InterrogationCommand irc = (InterrogationCommand) CS101_ASDU_getElement(asdu, 0);
+                union uInformationObject _io;
+
+                InterrogationCommand irc = (InterrogationCommand) CS101_ASDU_getElementEx(asdu, (InformationObject) &_io, 0);
 
                 if (self->interrogationHandler(self->interrogationHandlerParameter,
                         &(self->iMasterConnection), asdu, InterrogationCommand_getQOI(irc)))
                     messageHandled = true;
-
-                InterrogationCommand_destroy(irc);
             }
         }
         else
@@ -601,14 +619,13 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
 
             if (self->counterInterrogationHandler != NULL) {
 
-                CounterInterrogationCommand cic = (CounterInterrogationCommand) CS101_ASDU_getElement(asdu, 0);
+                union uInformationObject _io;
 
+                CounterInterrogationCommand cic = (CounterInterrogationCommand) CS101_ASDU_getElementEx(asdu, (InformationObject) &_io, 0);
 
                 if (self->counterInterrogationHandler(self->counterInterrogationHandlerParameter,
                         &(self->iMasterConnection), asdu, CounterInterrogationCommand_getQCC(cic)))
                     messageHandled = true;
-
-                CounterInterrogationCommand_destroy(cic);
             }
         }
         else
@@ -622,13 +639,14 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
 
         if (cot == CS101_COT_REQUEST) {
             if (self->readHandler != NULL) {
-                ReadCommand rc = (ReadCommand) CS101_ASDU_getElement(asdu, 0);
+
+                union uInformationObject _io;
+
+                ReadCommand rc = (ReadCommand) CS101_ASDU_getElementEx(asdu, (InformationObject) &_io, 0);
 
                 if (self->readHandler(self->readHandlerParameter,
                         &(self->iMasterConnection), asdu, InformationObject_getObjectAddress((InformationObject) rc)))
                     messageHandled = true;
-
-                ReadCommand_destroy(rc);
             }
         }
         else
@@ -644,13 +662,20 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
 
             if (self->clockSyncHandler != NULL) {
 
-                ClockSynchronizationCommand csc = (ClockSynchronizationCommand) CS101_ASDU_getElement(asdu, 0);
+                union uInformationObject _io;
+
+                ClockSynchronizationCommand csc = (ClockSynchronizationCommand) CS101_ASDU_getElementEx(asdu, (InformationObject) &_io, 0);
 
                 if (self->clockSyncHandler(self->clockSyncHandlerParameter,
                         &(self->iMasterConnection), asdu, ClockSynchronizationCommand_getTime(csc)))
                     messageHandled = true;
 
-                ClockSynchronizationCommand_destroy(csc);
+                if (messageHandled) {
+                    /* send ACT-CON message */
+                    CS101_ASDU_setCOT(asdu, CS101_COT_ACTIVATION_CON);
+
+                    CS101_Slave_enqueueUserDataClass1(self, asdu);
+                }
             }
         }
         else
@@ -662,8 +687,10 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
 
         DEBUG_PRINT("Rcvd test command C_TS_NA_1\n");
 
-        if (cot != CS101_COT_ACTIVATION)
+        if (cot != CS101_COT_ACTIVATION) {
             CS101_ASDU_setCOT(asdu, CS101_COT_UNKNOWN_COT);
+            CS101_ASDU_setNegative(asdu, true);
+        }
         else
             CS101_ASDU_setCOT(asdu, CS101_COT_ACTIVATION_CON);
 
@@ -680,13 +707,14 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
         if (cot == CS101_COT_ACTIVATION) {
 
             if (self->resetProcessHandler != NULL) {
-                ResetProcessCommand rpc = (ResetProcessCommand) CS101_ASDU_getElement(asdu, 0);
+
+                union uInformationObject _io;
+
+                ResetProcessCommand rpc = (ResetProcessCommand) CS101_ASDU_getElementEx(asdu, (InformationObject) &_io, 0);
 
                 if (self->resetProcessHandler(self->resetProcessHandlerParameter,
                         &(self->iMasterConnection), asdu, ResetProcessCommand_getQRP(rpc)))
                     messageHandled = true;
-
-                ResetProcessCommand_destroy(rpc);
             }
 
         }
@@ -702,7 +730,10 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
         if ((cot == CS101_COT_ACTIVATION) || (cot == CS101_COT_SPONTANEOUS)) {
 
             if (self->delayAcquisitionHandler != NULL) {
-                DelayAcquisitionCommand dac = (DelayAcquisitionCommand) CS101_ASDU_getElement(asdu, 0);
+
+                union uInformationObject _io;
+
+                DelayAcquisitionCommand dac = (DelayAcquisitionCommand) CS101_ASDU_getElementEx(asdu, (InformationObject) &_io, 0);
 
                 if (self->delayAcquisitionHandler(self->delayAcquisitionHandlerParameter,
                         &(self->iMasterConnection), asdu, DelayAcquisitionCommand_getDelay(dac)))
@@ -728,8 +759,14 @@ handleASDU(CS101_Slave self, CS101_ASDU asdu)
     if (messageHandled == false) {
         /* send error response */
         CS101_ASDU_setCOT(asdu, CS101_COT_UNKNOWN_TYPE_ID);
+        CS101_ASDU_setNegative(asdu, true);
         CS101_Slave_enqueueUserDataClass1(self, asdu);
     }
 }
 
+void
+CS101_Slave_setRawMessageHandler(CS101_Slave self, IEC60870_RawMessageHandler handler, void* parameter)
+{
+    SerialTransceiverFT12_setRawMessageHandler(self->transceiver, handler, parameter);
+}
 

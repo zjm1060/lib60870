@@ -5,6 +5,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* Callback handler to log sent or received messages (optional) */
+static void
+rawMessageHandler (void* parameter, uint8_t* msg, int msgSize, bool sent)
+{
+    if (sent)
+        printf("SEND: ");
+    else
+        printf("RCVD: ");
+
+    int i;
+    for (i = 0; i < msgSize; i++) {
+        printf("%02x ", msg[i]);
+    }
+
+    printf("\n");
+}
+
+/* Connection event handler */
 static void
 connectionHandler (void* parameter, CS104_Connection connection, CS104_ConnectionEvent event)
 {
@@ -96,6 +114,9 @@ main(int argc, char** argv)
     CS104_Connection_setConnectionHandler(con, connectionHandler, NULL);
     CS104_Connection_setASDUReceivedHandler(con, asduReceivedHandler, NULL);
 
+    /* uncomment to log messages */
+    //CS104_Connection_setRawMessageHandler(con, rawMessageHandler, NULL);
+
     if (CS104_Connection_connect(con)) {
         printf("Connected!\n");
 
@@ -111,7 +132,7 @@ main(int argc, char** argv)
                 SingleCommand_create(NULL, 5000, true, false, 0);
 
         printf("Send control command C_SC_NA_1\n");
-        CS104_Connection_sendProcessCommand(con, C_SC_NA_1, CS101_COT_ACTIVATION, 1, sc);
+        CS104_Connection_sendProcessCommandEx(con, CS101_COT_ACTIVATION, 1, sc);
 
         InformationObject_destroy(sc);
 

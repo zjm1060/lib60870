@@ -1,5 +1,5 @@
 /*
- *  Copyright 2016 MZ Automation GmbH
+ *  Copyright 2016-2018 MZ Automation GmbH
  *
  *  This file is part of lib60870-C
  *
@@ -80,17 +80,22 @@ struct sCS104_Connection {
     int maxSentASDUs;    /* maximum number of ASDU to be sent without confirmation - parameter k */
     int oldestSentASDU;  /* index of oldest entry in k-buffer */
     int newestSentASDU;  /* index of newest entry in k-buffer */
-#if (CONFIG_USE_THREADS == 1)
+
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore sentASDUsLock;
+#endif
+
+#if (CONFIG_USE_THREADS == 1)
     Thread connectionHandlingThread;
 #endif
 
     int receiveCount;
     int sendCount;
 
-    bool firstIMessageReceived;
-
     int unconfirmedReceivedIMessages;
+
+    /* timeout T2 handling */
+    bool timeoutT2Trigger;
     uint64_t lastConfirmationTime;
 
     uint64_t nextT3Timeout;
@@ -113,6 +118,9 @@ struct sCS104_Connection {
 
     CS104_ConnectionHandler connectionHandler;
     void* connectionHandlerParameter;
+
+    IEC60870_RawMessageHandler rawMessageHandler;
+    void* rawMessageHandlerParameter;
 };
 
 
@@ -131,9 +139,12 @@ static uint8_t STOPDT_ACT_MSG[] = { 0x68, 0x04, 0x13, 0x00, 0x00, 0x00 };
 static uint8_t STARTDT_CON_MSG[] = { 0x68, 0x04, 0x0b, 0x00, 0x00, 0x00 };
 #define STARTDT_CON_MSG_SIZE 6
 
-static inline int
+static int
 writeToSocket(CS104_Connection self, uint8_t* buf, int size)
 {
+    if (self->rawMessageHandler)
+        self->rawMessageHandler(self->rawMessageHandlerParameter, buf, size, true);
+
 #if (CONFIG_CS104_SUPPORT_TLS == 1)
     if (self->tlsSocket)
         return TLSSocket_write(self->tlsSocket, buf, size);
@@ -173,6 +184,9 @@ sendIMessage(CS104_Connection self, Frame frame)
 
     self->sendCount = (self->sendCount + 1) % 32768;
 
+    self->unconfirmedReceivedIMessages = false;
+    self->timeoutT2Trigger = false;
+
     return self->sendCount;
 }
 
@@ -193,8 +207,14 @@ createConnection(const char* hostname, int tcpPort)
         self->connectionHandler = NULL;
         self->connectionHandlerParameter = NULL;
 
-#if (CONFIG_USE_THREADS == 1)
+        self->rawMessageHandler = NULL;
+        self->rawMessageHandlerParameter = NULL;
+
+#if (CONFIG_USE_SEMAPHORES == 1)
         self->sentASDUsLock = Semaphore_create(1);
+#endif
+
+#if (CONFIG_USE_THREADS == 1)
         self->connectionHandlingThread = NULL;
 #endif
 
@@ -258,7 +278,7 @@ resetConnection(CS104_Connection self)
 
     self->unconfirmedReceivedIMessages = 0;
     self->lastConfirmationTime = 0xffffffffffffffff;
-    self->firstIMessageReceived = false;
+    self->timeoutT2Trigger = false;
 
     self->oldestSentASDU = -1;
     self->newestSentASDU = -1;
@@ -278,7 +298,7 @@ resetConnection(CS104_Connection self)
 static bool
 checkSequenceNumber(CS104_Connection self, int seqNo)
 {
-#if (CONFIG_USE_THREADS == 1)
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore_wait(self->sentASDUsLock);
 #endif
 
@@ -286,6 +306,7 @@ checkSequenceNumber(CS104_Connection self, int seqNo)
 
     bool seqNoIsValid = false;
     bool counterOverflowDetected = false;
+    int oldestValidSeqNo = -1;
 
     if (self->oldestSentASDU == -1) { /* if k-Buffer is empty */
         if (seqNo == self->sendCount)
@@ -306,9 +327,13 @@ checkSequenceNumber(CS104_Connection self, int seqNo)
             counterOverflowDetected = true;
         }
 
-        int latestValidSeqNo = (self->sentASDUs[self->oldestSentASDU].seqNo - 1) % 32768;
+        /* check if confirmed message was already removed from list */
+        if (self->sentASDUs[self->oldestSentASDU].seqNo == 0)
+            oldestValidSeqNo = 32767;
+        else
+            oldestValidSeqNo = (self->sentASDUs[self->oldestSentASDU].seqNo - 1) % 32768;
 
-        if (latestValidSeqNo == seqNo)
+        if (oldestValidSeqNo == seqNo)
             seqNoIsValid = true;
     }
 
@@ -321,9 +346,21 @@ checkSequenceNumber(CS104_Connection self, int seqNo)
                     if (seqNo < self->sentASDUs [self->oldestSentASDU].seqNo)
                         break;
                 }
-                else {
-                    if (seqNo == ((self->sentASDUs [self->oldestSentASDU].seqNo - 1) % 32768))
-                        break;
+
+                if (seqNo == oldestValidSeqNo)
+                    break;
+
+
+
+                if (self->sentASDUs [self->oldestSentASDU].seqNo == seqNo) {
+                    /* we arrived at the seq# that has been confirmed */
+
+                    if (self->oldestSentASDU == self->newestSentASDU)
+                        self->oldestSentASDU = -1;
+                    else
+                        self->oldestSentASDU = (self->oldestSentASDU + 1) % self->maxSentASDUs;
+
+                    break;
                 }
 
                 self->oldestSentASDU = (self->oldestSentASDU + 1) % self->maxSentASDUs;
@@ -335,14 +372,12 @@ checkSequenceNumber(CS104_Connection self, int seqNo)
                     break;
                 }
 
-                if (self->sentASDUs [self->oldestSentASDU].seqNo == seqNo)
-                    break;
             } while (true);
 
         }
     }
 
-#if (CONFIG_USE_THREADS == 1)
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore_post(self->sentASDUsLock);
 #endif
 
@@ -385,7 +420,7 @@ CS104_Connection_destroy(CS104_Connection self)
     if (self->sentASDUs != NULL)
         GLOBAL_FREEMEM(self->sentASDUs);
 
-#if (CONFIG_USE_THREADS == 1)
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore_destroy(self->sentASDUsLock);
 #endif
 
@@ -425,7 +460,7 @@ CS104_Connection_getAPCIParameters(CS104_Connection self)
 }
 
 #if (CONFIG_CS104_SUPPORT_TLS == 1)
-static inline int
+static int
 receiveMessageTlsSocket(TLSSocket socket, uint8_t* buffer)
 {
     int readFirst = TLSSocket_read(socket, buffer, 1);
@@ -449,7 +484,7 @@ receiveMessageTlsSocket(TLSSocket socket, uint8_t* buffer)
 }
 #endif /*  (CONFIG_CS104_SUPPORT_TLS == 1) */
 
-static inline int
+static int
 receiveMessageSocket(Socket socket, uint8_t* buffer)
 {
     int readFirst = Socket_read(socket, buffer, 1);
@@ -500,8 +535,8 @@ checkMessage(CS104_Connection self, uint8_t* buffer, int msgSize)
 {
     if ((buffer[2] & 1) == 0) { /* I format frame */
 
-        if (self->firstIMessageReceived == false) {
-            self->firstIMessageReceived = true;
+        if (self->timeoutT2Trigger == false) {
+            self->timeoutT2Trigger = true;
             self->lastConfirmationTime = Hal_getTimeInMs(); /* start timeout T2 */
         }
 
@@ -619,6 +654,7 @@ handleTimeouts(CS104_Connection self)
 
             self->lastConfirmationTime = currentTime;
             self->unconfirmedReceivedIMessages = 0;
+            self->timeoutT2Trigger = false;
 
             sendSMessage(self); /* send confirmation message */
         }
@@ -633,7 +669,7 @@ handleTimeouts(CS104_Connection self)
     }
 
     /* check if counterpart confirmed I messages */
-#if (CONFIG_USE_THREADS == 1)
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore_wait(self->sentASDUsLock);
 #endif
     if (self->oldestSentASDU != -1) {
@@ -642,7 +678,7 @@ handleTimeouts(CS104_Connection self)
             retVal = false;
         }
     }
-#if (CONFIG_USE_THREADS == 1)
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore_post(self->sentASDUsLock);
 #endif
 
@@ -652,6 +688,7 @@ exit_function:
     return retVal;
 }
 
+#if (CONFIG_USE_THREADS == 1)
 static void*
 handleConnection(void* parameter)
 {
@@ -667,7 +704,7 @@ handleConnection(void* parameter)
 
 #if (CONFIG_CS104_SUPPORT_TLS == 1)
         if (self->tlsConfig != NULL) {
-            self->tlsSocket = TLSSocket_create(self->socket, self->tlsConfig);
+            self->tlsSocket = TLSSocket_create(self->socket, self->tlsConfig, false);
 
             if (self->tlsSocket)
                 self->running = true;
@@ -707,9 +744,12 @@ handleConnection(void* parameter)
 
                     if (bytesRec > 0) {
 
+                        if (self->rawMessageHandler)
+                            self->rawMessageHandler(self->rawMessageHandlerParameter, buffer, bytesRec, false);
+
                         if (checkMessage(self, buffer, bytesRec) == false) {
                             /* close connection on error */
-                            loopRunning= false;
+                            loopRunning = false;
                             self->failure = true;
                         }
                     }
@@ -717,6 +757,7 @@ handleConnection(void* parameter)
                     if (self->unconfirmedReceivedIMessages >= self->parameters.w) {
                         self->lastConfirmationTime = Hal_getTimeInMs();
                         self->unconfirmedReceivedIMessages = 0;
+                        self->timeoutT2Trigger = false;
                         sendSMessage(self);
                     }
                 }
@@ -753,19 +794,30 @@ handleConnection(void* parameter)
 
     return NULL;
 }
+#endif /* (CONFIG_USE_THREADS == 1) */
 
 void
 CS104_Connection_connectAsync(CS104_Connection self)
 {
+    self->running = false;
+    self->failure = false;
+    self->close = false;
+
+#if (CONFIG_USE_THREADS == 1)
     self->connectionHandlingThread = Thread_create(handleConnection, (void*) self, false);
 
     if (self->connectionHandlingThread)
         Thread_start(self->connectionHandlingThread);
+#endif
 }
 
 bool
 CS104_Connection_connect(CS104_Connection self)
 {
+    self->running = false;
+    self->failure = false;
+    self->close = false;
+
     CS104_Connection_connectAsync(self);
 
     while ((self->running == false) && (self->failure == false))
@@ -786,6 +838,13 @@ CS104_Connection_setConnectionHandler(CS104_Connection self, CS104_ConnectionHan
 {
     self->connectionHandler = handler;
     self->connectionHandlerParameter = parameter;
+}
+
+void
+CS104_Connection_setRawMessageHandler(CS104_Connection self, IEC60870_RawMessageHandler handler, void* parameter)
+{
+    self->rawMessageHandler = handler;
+    self->rawMessageHandlerParameter = parameter;
 }
 
 static void
@@ -814,7 +873,7 @@ encodeIOA(CS104_Connection self, Frame frame, int ioa)
     if (self->alParameters.sizeOfIOA > 1)
         T104Frame_setNextByte(frame, (uint8_t) ((ioa / 0x100) & 0xff));
 
-    if (self->alParameters.sizeOfIOA > 1)
+    if (self->alParameters.sizeOfIOA > 2)
         T104Frame_setNextByte(frame, (uint8_t) ((ioa / 0x10000) & 0xff));
 }
 
@@ -833,7 +892,7 @@ CS104_Connection_sendStopDT(CS104_Connection self)
 static void
 sendIMessageAndUpdateSentASDUs(CS104_Connection self, Frame frame)
 {
-#if (CONFIG_USE_THREADS == 1)
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore_wait(self->sentASDUsLock);
 #endif
 
@@ -852,7 +911,7 @@ sendIMessageAndUpdateSentASDUs(CS104_Connection self, Frame frame)
 
     self->newestSentASDU = currentIndex;
 
-#if (CONFIG_USE_THREADS == 1)
+#if (CONFIG_USE_SEMAPHORES == 1)
     Semaphore_post(self->sentASDUsLock);
 #endif
 }
@@ -949,6 +1008,23 @@ bool
 CS104_Connection_sendProcessCommand(CS104_Connection self, TypeID typeId, CS101_CauseOfTransmission cot, int ca, InformationObject sc)
 {
     Frame frame = (Frame) T104Frame_create();
+
+    if (typeId == 0)
+        typeId = InformationObject_getType(sc);
+
+    encodeIdentificationField (self, frame, typeId, 1 /* SQ:false; NumIX:1 */, cot, ca);
+
+    InformationObject_encode(sc, frame, (CS101_AppLayerParameters) &(self->alParameters), false);
+
+    return sendASDUInternal(self, frame);
+}
+
+bool
+CS104_Connection_sendProcessCommandEx(CS104_Connection self, CS101_CauseOfTransmission cot, int ca, InformationObject sc)
+{
+    Frame frame = (Frame) T104Frame_create();
+
+    TypeID typeId = InformationObject_getType(sc);
 
     encodeIdentificationField (self, frame, typeId, 1 /* SQ:false; NumIX:1 */, cot, ca);
 
